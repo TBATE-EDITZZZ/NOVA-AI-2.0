@@ -1,3 +1,4 @@
+
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
 import { parse as parseCookieHeader } from "cookie";
@@ -19,7 +20,15 @@ export type SessionPayload = {
 class SDKServer {
   private getSessionSecret() {
     const secret = ENV.cookieSecret;
-    if (!secret) throw new Error("MANUS_JWT_SECRET is unavailable");
+
+    if (!secret) {
+      throw new Error("SESSION_SECRET is unavailable");
+    }
+
+    if (secret.length < 32) {
+      throw new Error("SESSION_SECRET must be at least 32 characters long");
+    }
+
     return new TextEncoder().encode(secret);
   }
 
@@ -43,7 +52,10 @@ class SDKServer {
   ): Promise<string> {
     const issuedAt = Date.now();
     const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
-    const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
+    const expirationSeconds = Math.floor(
+      (issuedAt + expiresInMs) / 1000
+    );
+
     return new SignJWT({
       openId: payload.openId,
       appId: payload.appId,
@@ -60,13 +72,25 @@ class SDKServer {
     if (!cookieValue) return null;
 
     try {
-      const { payload } = await jwtVerify(cookieValue, this.getSessionSecret(), {
-        algorithms: ["HS256"],
-      });
+      const { payload } = await jwtVerify(
+        cookieValue,
+        this.getSessionSecret(),
+        {
+          algorithms: ["HS256"],
+        }
+      );
+
       const { openId, appId, name } = payload as Record<string, unknown>;
-      if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || appId !== ENV.appId || typeof name !== "string") {
+
+      if (
+        !isNonEmptyString(openId) ||
+        !isNonEmptyString(appId) ||
+        appId !== ENV.appId ||
+        typeof name !== "string"
+      ) {
         return null;
       }
+
       return { openId, appId, name };
     } catch {
       return null;
@@ -76,19 +100,35 @@ class SDKServer {
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
     const cookies = parseCookieHeader(req.headers.cookie ?? "");
     let sessionToken = cookies[COOKIE_NAME];
+
     if (!sessionToken) {
       const authHeader = req.headers.authorization;
-      if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+
+      if (
+        typeof authHeader === "string" &&
+        authHeader.startsWith("Bearer ")
+      ) {
         sessionToken = authHeader.slice(7);
       }
     }
 
     const session = await this.verifySession(sessionToken);
-    if (!session) throw ForbiddenError("Invalid session cookie");
+
+    if (!session) {
+      throw ForbiddenError("Invalid session cookie");
+    }
 
     const user = await db.getUserByOpenId(session.openId);
-    if (!user) throw ForbiddenError("User not found");
-    await db.upsertUser({ openId: user.openId, lastSignedIn: new Date() });
+
+    if (!user) {
+      throw ForbiddenError("User not found");
+    }
+
+    await db.upsertUser({
+      openId: user.openId,
+      lastSignedIn: new Date(),
+    });
+
     return user;
   }
 }
@@ -96,3 +136,4 @@ class SDKServer {
 export type AuthenticatedUser = User;
 
 export const sdk = new SDKServer();
+
