@@ -44,5 +44,19 @@ export const ENV = {
   get forgeApiKey() {
     return process.env.NOVA_API_KEY ?? "";
   },
+
+  // NOVA multi-provider image generation
+  get cloudflareAccountId() {
+    return process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
+  },
+  get cloudflareApiToken() {
+    return process.env.CLOUDFLARE_API_TOKEN ?? "";
+  },
+  get pollinationsApiKey() {
+    return process.env.POLLINATIONS_API_KEY ?? "";
+  },
+  get stabilityApiKey() {
+    return process.env.STABILITY_API_KEY ?? "";
+  },
 };
 

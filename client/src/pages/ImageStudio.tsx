@@ -4,16 +4,20 @@ import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
+type ImageProvider = "auto" | "cloudflare" | "pollinations" | "stability";
+
 type GeneratedImage = {
   url: string;
   prompt: string;
   createdAt: string;
+  provider?: string;
 };
 
 export default function ImageStudio() {
   const { user, loading: authLoading } = useAuth();
   const [prompt, setPrompt] = useState("");
   const [quality, setQuality] = useState<"medium" | "high">("medium");
+  const [provider, setProvider] = useState<ImageProvider>("auto");
   const [currentImage, setCurrentImage] = useState<GeneratedImage | null>(null);
   const [history, setHistory] = useState<GeneratedImage[]>([]);
 
@@ -23,6 +27,7 @@ export default function ImageStudio() {
         url: result.url,
         prompt,
         createdAt: new Date().toLocaleTimeString(),
+        provider: result.provider,
       };
 
       setCurrentImage(image);
@@ -41,6 +46,7 @@ export default function ImageStudio() {
     generate.mutate({
       prompt: prompt.trim(),
       quality,
+      provider,
     });
   }
 
@@ -94,6 +100,22 @@ export default function ImageStudio() {
           >
             <option value="medium">Medium</option>
             <option value="high">High</option>
+          </select>
+
+          <label className="mb-2 mt-5 block text-sm font-semibold" htmlFor="image-provider">
+            Image provider
+          </label>
+
+          <select
+            id="image-provider"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as ImageProvider)}
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-sm outline-none focus:border-violet-500"
+          >
+            <option value="auto">Automatic — try all providers</option>
+            <option value="cloudflare">Cloudflare — FLUX.1 Schnell</option>
+            <option value="pollinations">Pollinations — FLUX.1 Schnell</option>
+            <option value="stability">Stability AI — Stable Image Core</option>
           </select>
 
           <button
@@ -166,9 +188,16 @@ export default function ImageStudio() {
 
           {currentImage && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-[65%] truncate text-xs opacity-60">
-                {currentImage.prompt}
-              </p>
+              <div className="min-w-0">
+                <p className="max-w-[65%] truncate text-xs opacity-60">
+                  {currentImage.prompt}
+                </p>
+                {currentImage.provider && (
+                  <p className="mt-1 text-xs text-violet-400">
+                    Provider: {currentImage.provider}
+                  </p>
+                )}
+              </div>
               <a
                 href={currentImage.url}
                 download="nova-generated-image.png"

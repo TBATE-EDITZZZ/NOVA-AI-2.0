@@ -1,122 +1,224 @@
-/**
- * Image generation helper using internal ImageService
- *
- * Example usage:
- *   const { url: imageUrl } = await generateImage({
- *     prompt: "A serene landscape with mountains"
- *   });
- *
- * For editing:
- *   const { url: imageUrl } = await generateImage({
- *     prompt: "Add a rainbow to this landscape",
- *     originalImages: [{
- *       url: "https://example.com/original.jpg",
- *       mimeType: "image/jpeg"
- *     }]
- *   });
- */
-import { storagePut } from "../storage";
 import { ENV } from "./env";
 
-// Default model for generated sites. "MODEL_GPT_IMAGE_2" is the forge images.v1
-// enum for GPT Image 2 (id: gpt-image-2). If omitted, forge falls back to Gemini 2.5 Flash.
-const DEFAULT_IMAGE_MODEL = "MODEL_GPT_IMAGE_2";
-const DEFAULT_IMAGE_QUALITY = "medium";
+export type ImageProvider = "cloudflare" | "pollinations" | "stability" | "auto";
 
 export type GenerateImageOptions = {
   prompt: string;
+  provider?: ImageProvider;
   originalImages?: Array<{
     url?: string;
     b64Json?: string;
     mimeType?: string;
   }>;
-  /** Forge image model enum, e.g. "MODEL_GPT_IMAGE_2". Defaults to GPT Image 2. */
   model?: string;
-  /** Generation quality, e.g. "medium" | "high". Defaults to "medium" for GPT Image 2. */
   quality?: string;
 };
 
 export type GenerateImageResponse = {
   url?: string;
+  provider?: string;
+  mimeType?: string;
 };
 
-export async function generateImage(
-  options: GenerateImageOptions
-): Promise<GenerateImageResponse> {
-  if (!ENV.forgeApiUrl) {
-    throw new Error("MANUS_API_URL is not configured");
+type GeneratedImage = {
+  buffer: Buffer;
+  mimeType: string;
+};
+
+const MODELS = [
+  { model: "cloudflare", id: "@cf/black-forest-labs/flux-1-schnell" },
+  { model: "pollinations", id: "black-forest-labs/flux.1-schnell" },
+  { model: "stability", id: "stable-image-core" },
+];
+
+function checkPrompt(prompt: string) {
+  if (!prompt || !prompt.trim()) {
+    throw new Error("Please enter an image prompt.");
   }
-  if (!ENV.forgeApiKey) {
-    throw new Error("MANUS_API_KEY is not configured");
+  if (prompt.length > 2000) {
+    throw new Error("Image prompt must be 2000 characters or less.");
+  }
+}
+
+async function readImage(response: Response): Promise<GeneratedImage> {
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `API error ${response.status}: ${detail.slice(0, 500) || response.statusText}`,
+    );
   }
 
-  // Build the full URL by appending the service path to the base URL
-  const baseUrl = ENV.forgeApiUrl.endsWith("/")
-    ? ENV.forgeApiUrl
-    : `${ENV.forgeApiUrl}/`;
-  const fullUrl = new URL(
-    "images.v1.ImageService/GenerateImage",
-    baseUrl
-  ).toString();
+  const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/png";
 
-  const model = options.model ?? DEFAULT_IMAGE_MODEL;
-  const quality =
-    options.quality ?? (model === DEFAULT_IMAGE_MODEL ? DEFAULT_IMAGE_QUALITY : undefined);
+  if (!mimeType.startsWith("image/")) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Provider returned non-image data: ${detail.slice(0, 300)}`);
+  }
 
-  const response = await fetch(fullUrl, {
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    mimeType,
+  };
+}
+
+async function generateCloudflare(prompt: string, quality?: string): Promise<GeneratedImage> {
+  if (!ENV.cloudflareAccountId || !ENV.cloudflareApiToken) {
+    throw new Error("Cloudflare credentials are not configured.");
+  }
+
+  const endpoint =
+    `https://api.cloudflare.com/client/v4/accounts/` +
+    `${ENV.cloudflareAccountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "connect-protocol-version": "1",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      Authorization: `Bearer ${ENV.cloudflareApiToken}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      prompt: options.prompt,
-      originalImages: options.originalImages || [],
-      model,
-      ...(quality ? { quality } : {}),
+      prompt,
+      steps: quality === "high" ? 8 : 4,
     }),
   });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(
-      `Image generation request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-    );
+    throw new Error(`Cloudflare ${response.status}: ${detail.slice(0, 400)}`);
   }
 
-  const result = (await response.json()) as {
-    image?: { b64Json?: string; url?: string; mimeType?: string };
-    error?: unknown;
+  const result = await response.json() as {
+    success?: boolean;
+    errors?: Array<{ message?: string }>;
+    result?: { image?: string };
   };
-  if (result.error || !result.image) throw new Error("Image service did not return an image");
-  let buffer: Buffer;
-  if (result.image.b64Json) {
-    buffer = Buffer.from(result.image.b64Json, "base64");
-  } else if (result.image.url) {
-    const imageResponse = await fetch(result.image.url);
-    if (!imageResponse.ok) throw new Error(`Image download failed (${imageResponse.status})`);
-    buffer = Buffer.from(await imageResponse.arrayBuffer());
-  } else {
-    throw new Error("Image service returned no downloadable bytes");
+
+  if (!result.result?.image) {
+    throw new Error(result.errors?.[0]?.message || "Cloudflare returned no image.");
   }
 
-  // Save to S3
-  const { url } = await storagePut(
-    `generated/${Date.now()}.png`,
-    buffer,
-    result.image.mimeType
-  );
   return {
-    url,
+    buffer: Buffer.from(result.result.image, "base64"),
+    mimeType: "image/jpeg",
   };
 }
 
+async function generatePollinations(prompt: string): Promise<GeneratedImage> {
+  if (!ENV.pollinationsApiKey) {
+    throw new Error("Pollinations API key is not configured.");
+  }
+
+  const endpoint = new URL(
+    `https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}`,
+  );
+
+  endpoint.searchParams.set("model", "black-forest-labs/flux.1-schnell");
+  endpoint.searchParams.set("width", "1024");
+  endpoint.searchParams.set("height", "1024");
+  endpoint.searchParams.set("nologo", "true");
+
+  const response = await fetch(endpoint, {
+    headers: {
+      Authorization: `Bearer ${ENV.pollinationsApiKey}`,
+      Accept: "image/*",
+    },
+  });
+
+  return readImage(response);
+}
+
+async function generateStability(prompt: string): Promise<GeneratedImage> {
+  if (!ENV.stabilityApiKey) {
+    throw new Error("Stability AI API key is not configured.");
+  }
+
+  const form = new FormData();
+  form.append("prompt", prompt);
+  form.append("aspect_ratio", "1:1");
+  form.append("output_format", "png");
+
+  const response = await fetch(
+    "https://api.stability.ai/v2beta/stable-image/generate/core",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ENV.stabilityApiKey}`,
+        Accept: "image/*",
+      },
+      body: form,
+    },
+  );
+
+  return readImage(response);
+}
+
+const PROVIDERS: Record<
+  Exclude<ImageProvider, "auto">,
+  (prompt: string, quality?: string) => Promise<GeneratedImage>
+> = {
+  cloudflare: generateCloudflare,
+  pollinations: generatePollinations,
+  stability: generateStability,
+};
+
+export async function generateImage(
+  options: GenerateImageOptions,
+): Promise<GenerateImageResponse> {
+  checkPrompt(options.prompt);
+
+  if (options.originalImages?.length) {
+    throw new Error(
+      "Image editing is not supported by this text-to-image integration yet.",
+    );
+  }
+
+  const requested = options.provider ?? "auto";
+  const order: Exclude<ImageProvider, "auto">[] =
+    requested === "auto"
+      ? ["cloudflare", "pollinations", "stability"]
+      : [requested];
+
+  const errors: string[] = [];
+
+  for (const provider of order) {
+    try {
+      const generated = await PROVIDERS[provider](
+        options.prompt,
+        options.quality,
+      );
+
+      if (!generated.buffer.length) {
+        throw new Error("Provider returned an empty image.");
+      }
+
+      const base64 = generated.buffer.toString("base64");
+
+      return {
+        url: `data:${generated.mimeType};base64,${base64}`,
+        provider,
+        mimeType: generated.mimeType,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+
+      errors.push(`${provider}: ${message}`);
+
+      console.error(`[NOVA Image Engine] ${provider} failed:`, message);
+
+      if (requested !== "auto") {
+        throw new Error(`${provider} image generation failed: ${message}`);
+      }
+    }
+  }
+
+  throw new Error(
+    `All NOVA image providers failed. ${errors.join(" | ")}`,
+  );
+}
+
 export type ImageModelInfo = {
-  /** Forge model enum, e.g. "MODEL_GPT_IMAGE_2". Pass into generateImage({ model }). */
   model?: string;
-  /** Stable model id, e.g. "gpt-image-2". */
   id?: string;
 };
 
@@ -124,44 +226,6 @@ export type ListImageModelsResponse = {
   models: ImageModelInfo[];
 };
 
-/**
- * List the image models the internal ImageService currently supports.
- * Feed a returned `model` value into generateImage({ model }).
- */
 export async function listImageModels(): Promise<ListImageModelsResponse> {
-  if (!ENV.forgeApiUrl) {
-    throw new Error("MANUS_API_URL is not configured");
-  }
-  if (!ENV.forgeApiKey) {
-    throw new Error("MANUS_API_KEY is not configured");
-  }
-
-  const baseUrl = ENV.forgeApiUrl.endsWith("/")
-    ? ENV.forgeApiUrl
-    : `${ENV.forgeApiUrl}/`;
-  const fullUrl = new URL(
-    "images.v1.ImageService/ListModels",
-    baseUrl
-  ).toString();
-
-  const response = await fetch(fullUrl, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "connect-protocol-version": "1",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: "{}",
-  });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `List image models failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-    );
-  }
-
-  const result = (await response.json()) as { models?: ImageModelInfo[] };
-  return { models: result.models ?? [] };
+  return { models: MODELS };
 }
