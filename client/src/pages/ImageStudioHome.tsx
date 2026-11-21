@@ -1,5 +1,5 @@
 import "./ImageStudio.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BrainCircuit,
   Check,
@@ -25,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
   MAX_PROMPT_LENGTH,
@@ -297,8 +298,8 @@ function Home() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [resultPrompt, setResultPrompt] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
-  const historyRef = useRef<HTMLDivElement>(null);
+  const [, setHistory] = useState<HistoryItem[]>(loadHistory);
+  const [, navigate] = useLocation();
 
   const providersQuery = trpc.image.providers.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const generate = trpc.image.studioGenerate.useMutation();
@@ -478,16 +479,6 @@ function Home() {
     toast.success("Settings restored from history");
   };
 
-  const clearHistory = () => {
-    setHistory([]);
-    writeStorage(HISTORY_KEY, "[]");
-  };
-
-  const scrollToHistory = () => {
-    closeSidebarOnMobile();
-    historyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   const ratioClass = selectedRatio.replace(":", "-");
 
@@ -526,7 +517,7 @@ function Home() {
             {sidebarOpen && <span className="nav-pill">SOON</span>}
           </button>
           <div className="nav-eyebrow nav-eyebrow-spaced">MANAGE</div>
-          <button className="nav-item" title="Generation history" onClick={scrollToHistory}>
+          <button className="nav-item" title="Generation history" onClick={() => { closeSidebarOnMobile(); navigate("/image-studio/history"); }}>
             <Clock3 size={17} />
             {sidebarOpen && <span>History</span>}
           </button>
@@ -763,21 +754,7 @@ function Home() {
                 <div className="provider-note"><span className="route-line" /><span>Provider credentials stay server-side. If a provider fails or has no key, NOVA retries with the next available route.</span></div>
               </div>
 
-              <div className="glass-card history-card" ref={historyRef}>
-                <div className="card-header"><SectionLabel>RECENT GENERATIONS</SectionLabel>{history.length > 0 && <button className="subtle-link" onClick={clearHistory}>Clear <Trash2 size={13} /></button>}</div>
-                {history.length === 0 ? (
-                  <div className="history-empty"><div className="history-stack"><div /><div /><div /></div><div><b>No generations yet</b><span>Your recent prompts and settings are saved on this device after you generate.</span></div></div>
-                ) : (
-                  <div className="history-list">
-                    {history.map((item) => (
-                      <button key={item.id} className="history-item" onClick={() => restoreFromHistory(item)} title={item.prompt}>
-                        {item.thumb ? <img src={item.thumb} alt="" /> : <span className="history-thumb-empty"><ImageIcon size={16} /></span>}
-                        <span className="history-item-copy"><b>{item.prompt}</b><small>{item.style} · {item.ratio} · {item.provider}</small></span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              
             </section>
           </div>
 
