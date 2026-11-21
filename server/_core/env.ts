@@ -58,5 +58,17 @@ export const ENV = {
   get stabilityApiKey() {
     return process.env.STABILITY_API_KEY ?? "";
   },
+  get geminiApiKey() {
+    return process.env.GEMINI_API_KEY ?? "";
+  },
+  get geminiModelFast() {
+    return process.env.GEMINI_MODEL_FAST ?? "gemini-3.1-flash-lite-image";
+  },
+  get geminiModelQuality() {
+    return process.env.GEMINI_MODEL_QUALITY ?? "gemini-3.1-flash-image";
+  },
+  get huggingFaceToken() {
+    return process.env.HF_TOKEN ?? "";
+  },
 };
 
