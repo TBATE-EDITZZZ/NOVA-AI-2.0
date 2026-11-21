@@ -1,6 +1,6 @@
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
-import Home from "./Home";
+import Home from "./ImageStudioHome";
 
 export default function ImageStudio() {
   const { user, loading } = useAuth();
