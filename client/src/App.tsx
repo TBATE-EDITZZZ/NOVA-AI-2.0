@@ -12,14 +12,7 @@ const Home = lazy(() => import("@/pages/Home"));
 const NOVA = lazy(() => import("@/pages/NOVA"));
 const ImageStudio = lazy(() => import("@/pages/ImageStudio"));
 const ImageStudioHistory = lazy(() => import("@/pages/ImageStudioHistory"));
-const Explorer = lazy(() => import("@/pages/Explorer"));
 const LiveIntelligence = lazy(() => import("@/pages/LiveIntelligence"));
-const Laboratory = lazy(() => import("@/pages/Laboratory"));
-const Research = lazy(() => import("@/pages/Research"));
-const Visualization = lazy(() => import("@/pages/Visualization"));
-const Knowledge = lazy(() => import("@/pages/Knowledge"));
-const Learning = lazy(() => import("@/pages/Learning"));
-const Library = lazy(() => import("@/pages/Library"));
 const SignIn = lazy(() => import("@/pages/SignIn"));
 
 function RouteLoading() {
@@ -56,15 +49,7 @@ function Router() {
               <Route path="/nova" component={NOVA} />
                   <Route path="/image-studio/history" component={ImageStudioHistory} />
               <Route path="/image-studio" component={ImageStudio} />
-              <Route path="/discoveries" component={Research} />
-              <Route path="/explorer" component={Explorer} />
-              <Route path="/laboratory" component={Laboratory} />
               <Route path="/live" component={LiveIntelligence} />
-              <Route path="/research" component={Research} />
-              <Route path="/visualization" component={Visualization} />
-              <Route path="/knowledge" component={Knowledge} />
-              <Route path="/learning" component={Learning} />
-              <Route path="/library" component={Library} />
               <Route path="/404" component={NotFound} />
               <Route component={NotFound} />
             </Switch>

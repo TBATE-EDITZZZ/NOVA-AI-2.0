@@ -11,16 +11,8 @@ import { useInteractionEffects } from "./useInteractionEffects";
 
 const navigation = [
   { label: "Home", href: "/" },
-  { label: "Discoveries", href: "/discoveries" },
-  { label: "Explorer", href: "/explorer" },
-  { label: "Laboratory", href: "/laboratory" },
   { label: "Live intelligence", href: "/live" },
-  { label: "Research", href: "/research" },
-  { label: "Visual studio", href: "/visualization" },
   { label: "Image Studio", href: "/image-studio" },
-  { label: "Knowledge", href: "/knowledge" },
-  { label: "Learning", href: "/learning" },
-  { label: "My Library", href: "/library" },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -79,7 +71,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {loading ? <span className="avatar avatar-pending" aria-label="Checking sign-in status" /> : user ? (
             <div className="profile-control">
               <button className="avatar" title={user.name ?? "Signed in"} aria-label={`Account menu for ${user.name ?? "user"}`} aria-haspopup="menu" aria-expanded={profileOpen} onClick={() => setProfileOpen(value => !value)}>{initials || <UserRound size={15} />}</button>
-              {profileOpen && <div className="profile-menu" role="menu" onKeyDown={event => { if (event.key === "Escape") setProfileOpen(false); }}><span className="profile-menu-name">{user.name || user.email || "Signed in"}</span><Link href="/library" role="menuitem" onClick={() => setProfileOpen(false)}>My research library <ArrowUpRight size={13} /></Link><button role="menuitem" onClick={() => void logout().catch(() => undefined).finally(() => setProfileOpen(false))}><LogOut size={13} /> Sign out</button></div>}
+              {profileOpen && <div className="profile-menu" role="menu" onKeyDown={event => { if (event.key === "Escape") setProfileOpen(false); }}><span className="profile-menu-name">{user.name || user.email || "Signed in"}</span><button role="menuitem" onClick={() => void logout().catch(() => undefined).finally(() => setProfileOpen(false))}><LogOut size={13} /> Sign out</button></div>}
             </div>
           ) : (
             <button className="sign-in" onClick={() => startLogin()}><UserRound size={15} /><span>Continue with Google</span></button>
@@ -92,7 +84,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <main id="main-content">{children}</main>
       <footer className="site-footer">
         <div className="footer-brand"><BrandMark compact /><p>Every question opens a new universe.</p></div>
-        <div className="footer-links"><Link href="/nova">Ask NOVA</Link><Link href="/live">Live intelligence</Link><Link href="/explorer">Explore science</Link><Link href="/learning">Learning</Link><Link href="/library">My library</Link></div>
+        <div className="footer-links"><Link href="/nova">Ask NOVA</Link><Link href="/live">Live intelligence</Link><Link href="/image-studio">Image Studio</Link></div>
         <div className="footer-note">DISCOVERY ENGINE <span>·</span> Evidence first, wonder always.</div>
       </footer>
       {introOpen && <CinematicIntro onDismiss={dismissIntro} />}
